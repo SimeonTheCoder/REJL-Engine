@@ -1,0 +1,81 @@
+#version 400 core
+
+in vec2 uvCoords;
+in vec3 surfaceNormal;
+in vec3 toLightVector[4];
+in vec3 toCameraVector;
+in float visibility;
+
+out vec4 out_Color;
+
+uniform sampler2D textureA;
+uniform sampler2D textureB;
+uniform sampler2D textureC;
+uniform sampler2D textureD;
+uniform sampler2D blendTexture;
+
+uniform vec3 lightColor[4];
+uniform float shineDamper;
+uniform float reflectivity;
+uniform vec3 skyColor;
+
+void main(void)
+{
+    vec4 blendTextureColor = texture(blendTexture, uvCoords);
+
+    float backTextureAmount = 1 - (blendTextureColor.r + blendTextureColor.g + blendTextureColor.b);
+    vec2 tiledCoords = uvCoords * 30;
+
+    vec4 textureAColor = texture(textureA, tiledCoords) * backTextureAmount;
+    vec4 textureBColor = texture(textureB, tiledCoords) * blendTextureColor.r;
+    vec4 textureCColor = texture(textureC, tiledCoords) * blendTextureColor.g;
+    vec4 textureDColor = texture(textureD, tiledCoords) * blendTextureColor.b;
+
+    vec4 total_color = textureAColor + textureBColor + textureCColor + textureDColor;
+
+    vec3 totalDiffuse = vec3(0.0);
+    vec3 totalSpecular = vec3(0.0);
+
+    vec3 unitNormal = normalize(surfaceNormal);
+    vec3 unitVectorToCamera = normalize(toCameraVector);
+
+    for(int i = 0; i < 4; i ++) {
+        float global = 0.0;
+        vec3 lColor = lightColor[i];
+
+        if(lightColor[i].x < 0) {
+            lColor = vec3(-lightColor[i].x, lightColor[i].y, lightColor[i].z);
+
+            global = 1.0;
+        }
+
+        vec3 lightNormal = normalize(toLightVector[i]);
+
+        float nDot1 = dot(unitNormal, lightNormal);
+        float brightness = max(nDot1, 0);
+
+        vec3 lightDirection = -lightNormal;
+        vec3 reflectedLightDirection = reflect(lightDirection, unitNormal);
+
+        float specular = dot(reflectedLightDirection, unitVectorToCamera);
+        specular = max(specular, 0);
+
+        float dampedSpecular = pow(specular, shineDamper);
+
+        vec3 diffuse = brightness * lColor;
+        vec3 finalSpecular = dampedSpecular * lColor * reflectivity;
+
+        if(global < 0.5) {
+            totalDiffuse = totalDiffuse + diffuse * (1 / length(-toLightVector[i]) / length(-toLightVector[i])) * 40;
+        }else{
+            totalDiffuse = totalDiffuse + diffuse;
+        }
+
+        totalSpecular = totalSpecular + finalSpecular;
+    }
+
+    totalDiffuse = max(totalDiffuse, .2);
+
+    out_Color = vec4(totalDiffuse, 1.0) * total_color + vec4(totalSpecular, 1.0);
+    out_Color = mix(vec4(skyColor, 1.0), out_Color, visibility);
+}

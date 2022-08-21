@@ -1,0 +1,84 @@
+#version 400 core
+
+in vec2 uvCoords;
+in vec3 surfaceNormal;
+in vec3 toLightVector[4];
+in vec3 toCameraVector;
+in float visibility;
+
+out vec4 out_Color;
+
+uniform sampler2D textureSampler;
+
+uniform vec3 lightColor[4];
+
+uniform float shineDamper;
+uniform float reflectivity;
+
+uniform float useNormals;
+uniform float useFog;
+uniform float useDiffuse;
+
+uniform vec3 skyColor;
+
+void main(void)
+{
+    vec3 unitNormal = normalize(surfaceNormal);
+    vec3 unitVectorToCamera = normalize(toCameraVector);
+
+    vec3 totalDiffuse = vec3(0.0);
+    vec3 totalSpecular = vec3(0.0);
+
+    for(int i = 0; i < 4; i ++) {
+        float global = 0.0;
+        vec3 lColor = lightColor[i];
+
+        if(lightColor[i].x < 0) {
+            lColor = vec3(-lightColor[i].x, lightColor[i].y, lightColor[i].z);
+
+            global = 1.0;
+        }
+
+        vec3 lightNormal = normalize(toLightVector[i]);
+
+        float nDot1 = dot(unitNormal, lightNormal);
+        float brightness = max(nDot1, 0);
+
+        vec3 lightDirection = -lightNormal;
+        vec3 reflectedLightDirection = reflect(lightDirection, unitNormal);
+
+        float specular = dot(reflectedLightDirection, unitVectorToCamera);
+        specular = max(specular, 0);
+
+        float dampedSpecular = pow(specular, shineDamper);
+
+        vec3 diffuse = brightness * lColor;
+        vec3 finalSpecular = dampedSpecular * lColor * reflectivity;
+
+        if(global < 0.5) {
+            totalDiffuse = totalDiffuse + diffuse * (1 / length(-toLightVector[i]) / length(-toLightVector[i])) * 40;
+        }else{
+            totalDiffuse = totalDiffuse + diffuse;
+        }
+
+        totalSpecular = totalSpecular + finalSpecular;
+    }
+
+    totalDiffuse = max(totalDiffuse, .2);
+
+    if(useDiffuse < 0.5) {
+        totalDiffuse = vec3(1.0, 1.0, 1.0);
+    }
+
+    vec4 textureColor = texture(textureSampler, uvCoords);
+
+    if(textureColor.a < 0.5) {
+        discard;
+    }
+
+    out_Color = vec4(totalDiffuse, 1.0) * textureColor + vec4(totalSpecular, 1.0);
+
+    if(useFog > 0.5) {
+        out_Color = mix(vec4(skyColor, 1.0), out_Color, visibility);
+    }
+}
